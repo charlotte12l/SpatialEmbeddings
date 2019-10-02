@@ -21,7 +21,7 @@ class CityscapesDataset(Dataset):
                    'bus', 'train', 'motorcycle', 'bicycle')
     class_ids = (24, 25, 26, 27, 28, 31, 32, 33)
 
-    def __init__(self, root_dir='./', type="train", class_id=26, size=None, transform=None):
+    def __init__(self, root_dir='./', type="train", class_id=None, size=None, transform=None):
 
         print('Cityscapes Dataset created')
 
@@ -80,8 +80,8 @@ class CityscapesDataset(Dataset):
             mask = np.logical_and(pic >= class_id * 1000, pic < (class_id + 1) * 1000)
             if mask.sum() > 0:
                 ids, _, _ = relabel_sequential(pic[mask])
-                instance_map[mask] = ids
-                class_map[mask] = 1
+                instance_map[mask] = ids # relabel all the instance from 1 to..
+                class_map[mask] = 1  # relabel all the instance to one class
         else:
             for i, c in enumerate(cls.class_ids):
                 mask = np.logical_and(pic >= c * 1000, pic < (c + 1) * 1000)
@@ -91,3 +91,4 @@ class CityscapesDataset(Dataset):
                     class_map[mask] = i+1
 
         return Image.fromarray(instance_map), Image.fromarray(class_map)
+

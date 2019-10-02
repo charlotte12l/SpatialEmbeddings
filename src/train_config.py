@@ -15,13 +15,15 @@ CITYSCAPES_DIR=os.environ.get('CITYSCAPES_DIR')
 args = dict(
 
     cuda=True,
-    display=True,
-    display_it=5,
+    display=False,
+    display_it=10,
+    tensorboard=True,
 
     save=True,
-    save_dir='./exp',
-    resume_path=None, 
-
+    save_dir='/n/pfister_lab2/Lab/xingyu/InstanceSeg/Outputs/checkpoints/Wmulti',
+    #resume_path='/n/pfister_lab2/Lab/xingyu/InstanceSeg/Outputs/checkpoints/Wmulti/best_iou_model.pth',
+    resume_path = None,
+#####please remember the fix layers
     train_dataset = {
         'name': 'cityscapes',
         'kwargs': {
@@ -45,7 +47,7 @@ args = dict(
                 },
             ]),
         },
-        'batch_size': 16,
+        'batch_size': 12,
         'workers': 8
     }, 
 
@@ -71,7 +73,7 @@ args = dict(
     model = {
         'name': 'branched_erfnet', 
         'kwargs': {
-            'num_classes': [3,1]
+            'num_classes': [3,8]
         }
     }, 
 

@@ -19,7 +19,7 @@ class BranchedERFNet(nn.Module):
             self.encoder = encoder
 
         self.decoders = nn.ModuleList()
-        for n in num_classes:
+        for n in num_classes: # 3, 1
             self.decoders.append(erfnet.Decoder(n))
 
     def init_output(self, n_sigma=1):

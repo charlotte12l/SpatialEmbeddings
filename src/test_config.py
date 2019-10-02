@@ -15,13 +15,14 @@ CITYSCAPES_DIR=os.environ.get('CITYSCAPES_DIR')
 args = dict(
 
     cuda=True,
-    display=True,
+    display=False,
+    compare = False,
 
-    save=False,
-    save_dir='./masks/',
-    checkpoint_path='./pretrained_models/cars_pretrained_model.pth',
-
-    dataset= { 
+    save=True,
+    save_dir='/n/pfister_lab2/Lab/xingyu/InstanceSeg/Outputs/SpatialEbd/multiclass0_rs_1',
+    #checkpoint_path='/n/pfister_lab2/Lab/xingyu/InstanceSeg/SpatialEmbeddings/src/pretrained_models/cars_pretrained_model.pth',
+    checkpoint_path='/n/pfister_lab2/Lab/xingyu/InstanceSeg/Outputs/checkpoints/multiclass0_rs/best_iou_model.pth',
+    dataset= {
         'name': 'cityscapes',
         'kwargs': {
             'root_dir': CITYSCAPES_DIR,
@@ -41,7 +42,7 @@ args = dict(
     model = {
         'name': 'branched_erfnet',
         'kwargs': {
-            'num_classes': [3, 1],
+            'num_classes': [3, 8],
         }
     }
 )

@@ -6,6 +6,8 @@ import collections
 import os
 import threading
 
+import cv2
+
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
@@ -14,6 +16,7 @@ from PIL import Image
 
 import torch
 
+class_ids = (24, 25, 26, 27, 28, 31, 32, 33)
 
 class AverageMeter(object):
 
@@ -40,8 +43,8 @@ class Visualizer:
 
     def __init__(self, keys):
         self.wins = {k:None for k in keys}
-
-    def display(self, image, key):
+        
+    def display(self, image, key, id_n):
 
         n_images = len(image) if isinstance(image, (list, tuple)) else 1
     
@@ -62,9 +65,12 @@ class Visualizer:
                 ax[i].cla()
                 ax[i].set_axis_off()
                 ax[i].imshow(self.prepare_img(image[i]))
-    
-        plt.draw()
-        self.mypause(0.001)
+
+        save_dir = '/n/pfister_lab2/Lab/xingyu/InstanceSeg/Outputs/SpatialEbd/masks/' + str(key) + '_' + str(id_n)+'.png'
+        plt.savefig(save_dir)
+        #plt.draw()
+        
+        self.mypause(0.01)
 
     @staticmethod
     def prepare_img(image):
@@ -140,49 +146,65 @@ class Cluster:
         
         spatial_emb = torch.tanh(prediction[0:2]) + xym_s  # 2 x h x w
         sigma = prediction[2:2+n_sigma]  # n_sigma x h x w
-        seed_map = torch.sigmoid(prediction[2+n_sigma:2+n_sigma + 1])  # 1 x h x w
+        seed_map = torch.sigmoid(prediction[2+n_sigma:2+n_sigma + 8])  # 1 x h x w
        
         instance_map = torch.zeros(height, width).byte()
         instances = []
 
         count = 1
-        mask = seed_map > 0.5
+        #instance_mask_all = torch.zeros(height, width).byte()
+        for i in range(8):
+            label = class_ids[i]
+                #print(seed_map.shape) # 8 1024 2048
+            one_seed_map = seed_map[i]
+            mask = one_seed_map > 0.5
+            #print((one_seed_map>0.5).sum())# 0
+            #print((instance_map==0).sum())# 2097152
+            #print(mask.shape)# 1024 2048
+            #print(mask.sum())# 0
+            #print(i)
+            #print(torch.max(one_seed_map).item())
 
-        if mask.sum() > 128:
+            if mask.sum() > 128:
+                #print('mask>128')
+                spatial_emb_masked = spatial_emb[mask.expand_as(spatial_emb)].view(2, -1)
+                sigma_masked = sigma[mask.expand_as(sigma)].view(n_sigma, -1)
+                seed_map_masked = one_seed_map[mask].view(1, -1)
+                #print(torch.max(seed_map_masked).item())
 
-            spatial_emb_masked = spatial_emb[mask.expand_as(spatial_emb)].view(2, -1)
-            sigma_masked = sigma[mask.expand_as(sigma)].view(n_sigma, -1)
-            seed_map_masked = seed_map[mask].view(1, -1)
+                unclustered = torch.ones(mask.sum()).byte().cuda()
+                instance_map_masked = torch.zeros(mask.sum()).byte().cuda()
 
-            unclustered = torch.ones(mask.sum()).byte().cuda()
-            instance_map_masked = torch.zeros(mask.sum()).byte().cuda()
+                while(unclustered.sum() > 128):
 
-            while(unclustered.sum() > 128):
+                    seed = (seed_map_masked * unclustered.float()).argmax().item()
+                    seed_score = (seed_map_masked * unclustered.float()).max().item()
+                    #print(seed_score)
+                    if seed_score < threshold:
+                        break
+                    center = spatial_emb_masked[:, seed:seed+1]
+                    unclustered[seed] = 0
+                    s = torch.exp(sigma_masked[:, seed:seed+1]*10)
+                    dist = torch.exp(-1*torch.sum(torch.pow(spatial_emb_masked -
+                                                            center, 2)*s, 0, keepdim=True))
 
-                seed = (seed_map_masked * unclustered.float()).argmax().item()
-                seed_score = (seed_map_masked * unclustered.float()).max().item()
-                if seed_score < threshold:
-                    break
-                center = spatial_emb_masked[:, seed:seed+1]
-                unclustered[seed] = 0
-                s = torch.exp(sigma_masked[:, seed:seed+1]*10)
-                dist = torch.exp(-1*torch.sum(torch.pow(spatial_emb_masked -
-                                                        center, 2)*s, 0, keepdim=True))
+                    proposal = (dist > 0.5).squeeze()
 
-                proposal = (dist > 0.5).squeeze()
+                    if proposal.sum() > 128:
+                        if unclustered[proposal].sum().float()/proposal.sum().float() > 0.5:
+                            instance_map_masked[proposal.squeeze()] = count # can return a instance map and class map
+                            instance_mask = torch.zeros(height, width).byte()
+                            instance_mask[mask.squeeze().cpu()] = proposal.cpu().byte()
+                            #instance_mask_all += instance_mask
+                            #print(np.unique(instance_mask.cpu().numpy()))
+                            instances.append(
+                                {'mask': instance_mask.squeeze()*255, 'score': seed_score, 'label': label})
+                            count += 1
+                            #print(count)
 
-                if proposal.sum() > 128:
-                    if unclustered[proposal].sum().float()/proposal.sum().float() > 0.5:
-                        instance_map_masked[proposal.squeeze()] = count
-                        instance_mask = torch.zeros(height, width).byte()
-                        instance_mask[mask.squeeze().cpu()] = proposal.cpu()
-                        instances.append(
-                            {'mask': instance_mask.squeeze()*255, 'score': seed_score})
-                        count += 1
+                    unclustered[proposal] = 0
 
-                unclustered[proposal] = 0
-
-            instance_map[mask.squeeze().cpu()] = instance_map_masked.cpu()
+                instance_map[mask.squeeze().cpu()] = instance_map_masked.cpu()
 
         return instance_map, instances
 
@@ -226,3 +248,24 @@ class Logger:
     def add(self, key, value):
         assert key in self.data, "Key not in data"
         self.data[key].append(value)
+
+def draw_flow(x):
+    m = np.shape(x)[1]
+    n = np.shape(x)[2]
+    hsv = np.zeros((m, n, 3),dtype=np.uint8)
+
+    hsv[:,:, 1] = 255
+
+    x = x.cpu().numpy()
+    #x = cv2.UMat(x.cpu().numpy())
+    mag, ang = cv2.cartToPolar(x[0], x[1])
+    hsv[:,:, 0] = ang * 180 / np.pi / 2
+    hsv[:,:, 2] = cv2.normalize(mag, None, 0, 255, cv2.NORM_MINMAX)
+
+    bgr = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
+    bgr = 255-bgr
+    #cv2.imshow("colored flow", bgr)
+    #cv2.waitKey(0)
+    #cv2.destroyAllWindows()
+
+    return bgr
