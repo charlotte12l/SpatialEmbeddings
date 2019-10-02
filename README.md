@@ -1,3 +1,5 @@
+## Modify the one class setting to multi-class one
+
 # Instance segmentation by jointly optimizing spatial embeddings and clustering bandwidth
 
 This codebase implements the loss function described in: 
